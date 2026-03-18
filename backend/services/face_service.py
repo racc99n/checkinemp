@@ -62,6 +62,7 @@ class FaceService:
 
     def enroll(self, employee_id: int, images_b64: list[str]) -> str:
         embeddings = []
+        processing_errors: list[str] = []
         for img_b64 in images_b64:
             try:
                 image = self._decode_image(img_b64)
@@ -72,8 +73,11 @@ class FaceService:
                 embeddings.append(emb)
             except Exception as e:
                 logger.warning(f"Skipping image during enroll: {e}")
+                processing_errors.append(str(e))
 
         if not embeddings:
+            if processing_errors and len(processing_errors) == len(images_b64):
+                raise ValueError(f"ระบบตรวจจับใบหน้าไม่พร้อมบนเซิร์ฟเวอร์: {processing_errors[0]}")
             raise ValueError("ไม่สามารถตรวจจับใบหน้าได้จากรูปภาพที่ส่งมา")
 
         avg_embedding = np.mean(embeddings, axis=0)
