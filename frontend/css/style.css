@@ -1,0 +1,188 @@
+:root {
+  --primary: #2563eb;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --border: #334155;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* Kiosk Layout */
+.kiosk-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1rem;
+  position: relative;
+}
+
+.kiosk-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  z-index: 1;
+}
+
+.kiosk-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kiosk-header p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.camera-wrapper {
+  position: relative;
+  width: min(400px, 90vw);
+  aspect-ratio: 4/3;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  background: #000;
+}
+
+#video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+#overlay-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+
+.face-guide {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 55%; aspect-ratio: 3/4;
+  border: 2.5px solid rgba(255,255,255,0.5);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: border-color 0.3s;
+}
+
+.face-guide.detected { border-color: #00ff88; box-shadow: 0 0 20px #00ff8866; }
+
+.scan-button {
+  margin-top: 1.5rem;
+  width: min(400px, 90vw);
+  padding: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.scan-button:active { transform: scale(0.98); }
+.scan-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.scan-button.scanning { background: #7c3aed; }
+
+/* Result overlay */
+.result-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.result-overlay.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.result-card {
+  background: var(--surface);
+  border-radius: 1.5rem;
+  padding: 2.5rem;
+  text-align: center;
+  max-width: 340px;
+  width: 90%;
+  border: 1px solid var(--border);
+}
+
+.result-icon { font-size: 4rem; margin-bottom: 1rem; }
+.result-name { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
+.result-code { color: var(--muted); font-size: 0.9rem; margin-bottom: 0.75rem; }
+.result-time { font-size: 1rem; margin-bottom: 0.5rem; }
+.result-status {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+.status-present { background: #16a34a22; color: #4ade80; }
+.status-late { background: #d9770622; color: #fbbf24; }
+.status-checkout { background: #2563eb22; color: #60a5fa; }
+
+/* Clock */
+.clock {
+  font-size: 2rem;
+  font-weight: 300;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+.date-display {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(2rem);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  opacity: 0;
+  transition: all 0.3s;
+  z-index: 200;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.error { border-color: var(--danger); color: #fca5a5; }

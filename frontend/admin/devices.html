@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>จัดการอุปกรณ์ - Admin</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">🏢 ระบบเข้างาน</div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="attendance.html" class="nav-item"><span class="nav-icon">📋</span> บันทึกการเข้างาน</a>
+      <a href="employees.html" class="nav-item"><span class="nav-icon">👥</span> จัดการพนักงาน</a>
+      <a href="shifts.html" class="nav-item"><span class="nav-icon">🕐</span> จัดการกะงาน</a>
+      <a href="devices.html" class="nav-item active"><span class="nav-icon">📱</span> จัดการอุปกรณ์</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="admin-name" style="color:#94a3b8;margin-bottom:0.5rem"></div>
+      <button onclick="logout()" class="nav-item" style="color:#f87171;padding:0.5rem 0">🚪 ออกจากระบบ</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">📱 จัดการอุปกรณ์</div>
+      <button class="btn btn-primary" onclick="openRegisterModal()">+ เพิ่มอุปกรณ์</button>
+    </div>
+    <div class="content">
+      <div class="alert alert-info" style="margin-bottom:1rem">
+        💡 <strong>วิธีใช้งาน:</strong>
+        เพิ่มอุปกรณ์ที่นี่ จากนั้นเปิดหน้า <a href="/" target="_blank" style="color:#2563eb">สแกนหน้า</a> ในเครื่อง/โทรศัพท์ที่ต้องการใช้งาน
+        ระบบจะให้กรอก username/password ของ admin เพื่อ activate อุปกรณ์อัตโนมัติ
+        (ไม่ต้องคัดลอก fingerprint อีกต่อไป)
+      </div>
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">อุปกรณ์ที่ลงทะเบียนแล้ว</span>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>ชื่ออุปกรณ์</th><th>สถานที่</th><th>Device Token</th><th>สถานะ</th><th>เข้าใช้ล่าสุด</th><th>ลงทะเบียน</th><th>จัดการ</th></tr>
+            </thead>
+            <tbody id="device-tbody"><tr><td colspan="7" style="text-align:center;color:#64748b;padding:2rem">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Register Device Modal -->
+<div class="modal-backdrop" id="device-modal">
+  <div class="modal">
+    <div class="modal-title">เพิ่มอุปกรณ์ใหม่</div>
+    <div class="form-group">
+      <label class="form-label">ชื่ออุปกรณ์ *</label>
+      <input type="text" id="dev-name" class="form-input" placeholder="เช่น โทรศัพท์ตึก A, โถงทางเข้า">
+    </div>
+    <div class="form-group">
+      <label class="form-label">สถานที่</label>
+      <input type="text" id="dev-location" class="form-input" placeholder="เช่น ชั้น 1 ทางเข้าหลัก">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveDevice()">💾 เพิ่มอุปกรณ์</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js?v=20260318-4"></script>
+<script>
+  if (!sessionStorage.getItem("admin_token")) window.location.href = "/admin/index.html";
+  document.getElementById("admin-name").textContent = "👤 " + (sessionStorage.getItem("admin_name") || "");
+  function logout() { sessionStorage.clear(); window.location.href = "/admin/index.html"; }
+
+  function showAlert(msg, type = "success") {
+    document.getElementById("alert-area").innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+    setTimeout(() => document.getElementById("alert-area").innerHTML = "", 4000);
+  }
+
+  async function loadDevices() {
+    try {
+      const devices = await API.listDevices();
+      const tbody = document.getElementById("device-tbody");
+      if (!devices.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:2rem">ยังไม่มีอุปกรณ์ กดปุ่ม "+ เพิ่มอุปกรณ์" เพื่อเริ่มต้น</td></tr>';
+        return;
+      }
+      tbody.innerHTML = devices.map(d => `
+        <tr>
+          <td><strong>${escHtml(d.device_name)}</strong></td>
+          <td>${escHtml(d.location) || '-'}</td>
+          <td>
+            <code style="font-size:0.75rem;color:#64748b" title="${escHtml(d.device_token)}">${d.device_token.slice(0,8)}...</code>
+            <button class="btn btn-outline btn-sm" style="font-size:0.7rem;padding:0.15rem 0.4rem;margin-left:0.25rem" onclick="copyToken('${escHtml(d.device_token)}')">📋</button>
+          </td>
+          <td>${d.is_active
+            ? '<span class="badge badge-green">✅ ใช้งาน</span>'
+            : '<span class="badge badge-red">🚫 ปิด</span>'
+          }</td>
+          <td style="font-size:0.85rem">${d.last_seen_at
+            ? new Date(d.last_seen_at).toLocaleString("th-TH", {dateStyle:"short",timeStyle:"short"})
+            : 'ยังไม่เคย'
+          }</td>
+          <td style="font-size:0.85rem">${new Date(d.registered_at).toLocaleString("th-TH", {dateStyle:"short",timeStyle:"short"})}</td>
+          <td>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <button class="btn btn-outline btn-sm" onclick="regenerateToken(${d.id}, '${escHtml(d.device_name)}')" title="สร้าง token ใหม่">🔄 Token ใหม่</button>
+              <button class="btn btn-outline btn-sm" onclick='toggleDevice(${d.id}, ${!d.is_active})'>
+                ${d.is_active ? '🚫 ปิด' : '✅ เปิด'}
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteDevice(${d.id}, '${escHtml(d.device_name)}')">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      showAlert(err.message, "error");
+    }
+  }
+
+  function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  function copyToken(token) {
+    navigator.clipboard.writeText(token).then(() => showAlert("คัดลอก Device Token แล้ว"));
+  }
+
+  function openRegisterModal() {
+    document.getElementById("device-modal").classList.add("show");
+  }
+
+  function closeModal() {
+    document.getElementById("device-modal").classList.remove("show");
+  }
+
+  async function saveDevice() {
+    const name = document.getElementById("dev-name").value.trim();
+    const loc = document.getElementById("dev-location").value.trim();
+    if (!name) { showAlert("กรุณากรอกชื่ออุปกรณ์", "error"); return; }
+    try {
+      await API.registerDevice({ device_name: name, fingerprint: "", location: loc });
+      showAlert("เพิ่มอุปกรณ์สำเร็จ ✅ เปิดหน้าสแกนในเครื่องที่ต้องการใช้แล้ว activate ได้เลย");
+      closeModal();
+      loadDevices();
+      ["dev-name","dev-location"].forEach(id => document.getElementById(id).value = "");
+    } catch (err) { showAlert(err.message, "error"); }
+  }
+
+  async function regenerateToken(id, name) {
+    if (!confirm(`สร้าง Token ใหม่สำหรับ "${name}"?\nอุปกรณ์ที่ใช้ token เก่าจะต้อง activate ใหม่`)) return;
+    try {
+      await API.regenerateToken(id);
+      showAlert("สร้าง Token ใหม่สำเร็จ อุปกรณ์จะต้อง activate ใหม่");
+      loadDevices();
+    } catch (err) { showAlert(err.message, "error"); }
+  }
+
+  async function toggleDevice(id, active) {
+    try {
+      await API.updateDevice(id, { is_active: active });
+      showAlert(active ? "เปิดใช้งานอุปกรณ์แล้ว" : "ปิดใช้งานอุปกรณ์แล้ว");
+      loadDevices();
+    } catch (err) { showAlert(err.message, "error"); }
+  }
+
+  async function deleteDevice(id, name) {
+    if (!confirm(`ลบอุปกรณ์ "${name}" ออกจากระบบ?`)) return;
+    try {
+      await API.deleteDevice(id);
+      showAlert("ลบอุปกรณ์แล้ว");
+      loadDevices();
+    } catch (err) { showAlert(err.message, "error"); }
+  }
+
+  loadDevices();
+</script>
+</body>
+</html>

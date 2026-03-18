@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>บันทึกการเข้างาน - Admin</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">🏢 ระบบเข้างาน</div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="attendance.html" class="nav-item active"><span class="nav-icon">📋</span> บันทึกการเข้างาน</a>
+      <a href="employees.html" class="nav-item"><span class="nav-icon">👥</span> จัดการพนักงาน</a>
+      <a href="shifts.html" class="nav-item"><span class="nav-icon">🕐</span> จัดการกะงาน</a>
+      <a href="devices.html" class="nav-item"><span class="nav-icon">📱</span> จัดการอุปกรณ์</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="admin-name" style="color:#94a3b8;margin-bottom:0.5rem"></div>
+      <button onclick="logout()" class="nav-item" style="color:#f87171;padding:0.5rem 0">🚪 ออกจากระบบ</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">📋 บันทึกการเข้างาน</div>
+    </div>
+    <div class="content">
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-header" style="flex-wrap:wrap;gap:0.75rem">
+          <div class="filter-bar">
+            <input type="date" id="f-from" class="form-input" style="width:auto">
+            <span style="color:#64748b;font-size:0.85rem">ถึง</span>
+            <input type="date" id="f-to" class="form-input" style="width:auto">
+            <input type="text" id="f-dept" class="form-input" placeholder="แผนก" style="width:130px">
+            <select id="f-status" class="form-select" style="width:auto">
+              <option value="">ทุกสถานะ</option>
+              <option value="present">ตรงเวลา</option>
+              <option value="late">สาย</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadAttendance(1)">🔍 ค้นหา</button>
+          </div>
+          <button class="btn btn-success" onclick="exportCSV()">⬇️ Export CSV</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">ผลการค้นหา</span>
+          <span id="total-label" class="badge badge-blue" style="font-size:0.8rem"></span>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>วันที่</th><th>พนักงาน</th><th>แผนก</th>
+                <th>เข้างาน</th><th>ออกงาน</th><th>ชม.ทำงาน</th>
+                <th>สถานะ</th><th>อุปกรณ์</th><th>หมายเหตุ</th>
+              </tr>
+            </thead>
+            <tbody id="att-tbody"><tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:2rem">กรุณาเลือกช่วงวันที่แล้วกดค้นหา</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  if (!sessionStorage.getItem("admin_token")) window.location.href = "/admin/index.html";
+  document.getElementById("admin-name").textContent = "👤 " + (sessionStorage.getItem("admin_name") || "");
+
+  function logout() { sessionStorage.clear(); window.location.href = "/admin/index.html"; }
+
+  // Set default date range (this week)
+  const today = new Date().toISOString().slice(0,10);
+  const weekAgo = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
+  document.getElementById("f-from").value = weekAgo;
+  document.getElementById("f-to").value = today;
+
+  const statusBadge = s => {
+    if (s === "present") return '<span class="badge badge-green">ตรงเวลา</span>';
+    if (s === "late") return '<span class="badge badge-yellow">สาย</span>';
+    return '<span class="badge badge-gray">' + s + '</span>';
+  };
+
+  function calcHours(in_at, out_at) {
+    if (!in_at || !out_at) return '-';
+    const diff = new Date(out_at) - new Date(in_at);
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    return `${h}:${String(m).padStart(2,"0")}`;
+  }
+
+  let currentPage = 1;
+  let totalPages = 1;
+
+  async function loadAttendance(page = 1) {
+    currentPage = page;
+    const params = {
+      date_from: document.getElementById("f-from").value,
+      date_to: document.getElementById("f-to").value,
+      department: document.getElementById("f-dept").value || undefined,
+      status: document.getElementById("f-status").value || undefined,
+      page, page_size: 50
+    };
+    // Remove undefined
+    Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
+
+    try {
+      const data = await API.listAttendance(params);
+      document.getElementById("total-label").textContent = `พบ ${data.total} รายการ`;
+      totalPages = Math.ceil(data.total / 50);
+
+      if (!data.records.length) {
+        document.getElementById("att-tbody").innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:2rem">ไม่พบข้อมูล</td></tr>';
+        document.getElementById("pagination").innerHTML = "";
+        return;
+      }
+
+      document.getElementById("att-tbody").innerHTML = data.records.map(r => `
+        <tr>
+          <td>${r.work_date}</td>
+          <td><strong>${r.employee_name}</strong><br><small style="color:#64748b">${r.employee_code}</small></td>
+          <td>${r.department || '-'}</td>
+          <td>${r.check_in_at ? new Date(r.check_in_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) : '-'}</td>
+          <td>${r.check_out_at ? new Date(r.check_out_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) : '<span style="color:#94a3b8">ยังไม่ออก</span>'}</td>
+          <td>${calcHours(r.check_in_at, r.check_out_at)}</td>
+          <td>${statusBadge(r.status)}</td>
+          <td>${r.device_name || '-'}</td>
+          <td style="color:#64748b;font-size:0.8rem">${r.notes || ''}</td>
+        </tr>
+      `).join("");
+
+      renderPagination();
+    } catch (err) {
+      document.getElementById("att-tbody").innerHTML = `<tr><td colspan="9" style="text-align:center;color:#dc2626;padding:2rem">${err.message}</td></tr>`;
+    }
+  }
+
+  function renderPagination() {
+    if (totalPages <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
+    let html = `<button class="page-btn" onclick="loadAttendance(${currentPage-1})" ${currentPage===1?"disabled":""}>‹</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 2) {
+        html += `<button class="page-btn ${i===currentPage?"active":""}" onclick="loadAttendance(${i})">${i}</button>`;
+      } else if (Math.abs(i - currentPage) === 3) {
+        html += `<span class="page-info">...</span>`;
+      }
+    }
+    html += `<button class="page-btn" onclick="loadAttendance(${currentPage+1})" ${currentPage===totalPages?"disabled":""}>›</button>`;
+    document.getElementById("pagination").innerHTML = html;
+  }
+
+  async function exportCSV() {
+    const params = {
+      date_from: document.getElementById("f-from").value,
+      date_to: document.getElementById("f-to").value,
+      department: document.getElementById("f-dept").value || undefined,
+    };
+    Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
+    try {
+      const res = await API.exportCSV(params);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `attendance_${params.date_from || "all"}_${params.date_to || "all"}.csv`;
+      a.click();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  loadAttendance(1);
+</script>
+</body>
+</html>

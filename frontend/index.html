@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ระบบสแกนหน้าเข้างาน</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0f172a',
+            surface: '#1e293b',
+            card: '#243044',
+            border: '#334155',
+            primary: '#3b82f6'
+          },
+          fontFamily: {
+            sans: ['Sarabun', 'Segoe UI', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { background-color: #0f172a; color: #f1f5f9; font-family: 'Sarabun', system-ui, sans-serif; }
+    #video { transform: scaleX(-1); width: 100%; height: 100%; object-fit: cover; display: block; }
+    .face-oval {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 52%; aspect-ratio: 3/4; border: 2.5px solid rgba(255,255,255,0.45);
+      border-radius: 50%; pointer-events: none; transition: border-color .25s, box-shadow .25s;
+    }
+    .face-oval.detected { border-color: #22c55e; box-shadow: 0 0 24px rgba(34,197,94,.45); }
+
+    #result-overlay {
+      display: none; position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.65);
+      backdrop-filter: blur(6px); align-items: center; justify-content: center;
+    }
+    #result-overlay.show { display: flex; }
+
+    #toast {
+      position: fixed; bottom: 5rem; left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: #f1f5f9; padding: .6rem 1.25rem; border-radius: 9999px;
+      border: 1px solid #334155; font-size: .85rem; z-index: 80; opacity: 0;
+      transition: opacity .25s; max-width: 90vw; text-align: center; pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+    #toast.error { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+
+    #cam-blocker { display: none; }
+    #cam-blocker.show {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+
+    /* Device activation modal */
+    #activate-overlay {
+      display: none; position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.75);
+      backdrop-filter: blur(8px); align-items: center; justify-content: center;
+    }
+    #activate-overlay.show { display: flex; }
+    .activate-input {
+      width: 100%; padding: 0.75rem 1rem; border-radius: 0.75rem; border: 1px solid #334155;
+      background: #1e293b; color: #f1f5f9; font-size: 0.95rem; outline: none;
+      transition: border-color 0.2s;
+    }
+    .activate-input:focus { border-color: #3b82f6; }
+    .activate-input::placeholder { color: #64748b; }
+    .activate-select {
+      width: 100%; padding: 0.75rem 1rem; border-radius: 0.75rem; border: 1px solid #334155;
+      background: #1e293b; color: #f1f5f9; font-size: 0.95rem; outline: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen overflow-x-hidden">
+  <header class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-surface border-b border-border">
+    <span class="font-bold text-sm text-primary tracking-wide">ระบบสแกนหน้าเข้างาน</span>
+    <div class="flex items-center gap-2">
+      <span id="clock-top" class="text-xs text-slate-400 tabular-nums"></span>
+      <span id="device-status" class="text-xs px-2 py-0.5 rounded-full bg-blue-900/40 text-blue-400 cursor-pointer" onclick="showActivateDialog()">กำลังตรวจสอบ...</span>
+    </div>
+  </header>
+
+  <div id="cam-blocker" class="fixed inset-0 z-40 bg-bg flex-col items-center justify-center p-6 text-center">
+    <div class="text-4xl mb-4">📹</div>
+    <h2 class="text-xl font-bold mb-2">ต้องการสิทธิ์เข้าถึงกล้อง</h2>
+    <p class="text-slate-400 text-sm mb-6">กรุณาอนุญาตการใช้กล้องเมื่อเบราว์เซอร์ถาม</p>
+    <button id="cam-btn" onclick="startCamera()" class="bg-primary hover:bg-blue-600 text-white font-semibold px-8 py-3 rounded-2xl text-base transition-colors active:scale-95">เปิดกล้อง</button>
+    <p id="cam-err" class="text-red-400 text-sm mt-4 hidden"></p>
+  </div>
+
+  <main class="flex flex-col items-center justify-center min-h-screen pt-14 pb-20 px-4">
+    <div class="text-center mb-5">
+      <div id="clock-main" class="text-5xl font-bold tabular-nums tracking-tight text-slate-100"></div>
+      <div id="date-main" class="text-sm text-slate-400 mt-1"></div>
+    </div>
+
+    <div class="w-full max-w-sm">
+      <div class="relative rounded-2xl overflow-hidden border border-border bg-black shadow-2xl" style="aspect-ratio:4/3">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+        <div class="face-oval" id="face-guide"></div>
+
+        <div id="cam-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-bg/90 text-slate-400 text-sm gap-2">
+          <svg class="animate-spin w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+          <span>กำลังเปิดกล้อง...</span>
+        </div>
+      </div>
+
+      <button id="scan-btn" disabled class="mt-4 w-full py-4 rounded-2xl font-bold text-lg bg-primary text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2">
+        <span id="btn-icon">📷</span>
+        <span id="btn-text">กำลังเตรียมกล้อง...</span>
+      </button>
+
+      <p class="text-center text-slate-500 text-xs mt-3">วางหน้าให้อยู่ในกรอบรูปไข่ แล้วกดปุ่มสแกน</p>
+    </div>
+  </main>
+
+  <!-- Result overlay -->
+  <div id="result-overlay" onclick="hideResult()">
+    <div class="bg-card border border-border rounded-3xl shadow-2xl p-8 mx-6 w-full max-w-xs flex flex-col items-center text-center" onclick="event.stopPropagation()">
+      <div id="res-icon" class="text-6xl mb-3"></div>
+      <div id="res-name" class="text-2xl font-bold text-slate-100 mb-1"></div>
+      <div id="res-code" class="text-sm text-slate-400 mb-3"></div>
+      <div id="res-time" class="text-base text-slate-300 mb-4"></div>
+      <span id="res-status" class="px-4 py-1.5 rounded-full text-sm font-semibold"></span>
+    </div>
+  </div>
+
+  <!-- Device Activation overlay -->
+  <div id="activate-overlay">
+    <div class="bg-card border border-border rounded-3xl shadow-2xl p-6 mx-4 w-full max-w-sm" onclick="event.stopPropagation()">
+      <div class="text-center mb-5">
+        <div class="text-4xl mb-2">🔐</div>
+        <h2 class="text-xl font-bold text-slate-100">Activate อุปกรณ์</h2>
+        <p class="text-slate-400 text-sm mt-1">กรุณาเข้าสู่ระบบด้วยบัญชีผู้ดูแลเพื่อ activate อุปกรณ์นี้</p>
+      </div>
+
+      <!-- Step 1: Admin Login -->
+      <div id="activate-step1">
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">ชื่อผู้ใช้ (Admin)</label>
+            <input type="text" id="act-username" class="activate-input" placeholder="username" autocomplete="username">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">รหัสผ่าน</label>
+            <input type="password" id="act-password" class="activate-input" placeholder="password" autocomplete="current-password">
+          </div>
+        </div>
+        <p id="act-error" class="text-red-400 text-sm mt-2 hidden"></p>
+        <button onclick="activateStep1()" class="mt-4 w-full py-3 rounded-2xl font-bold bg-primary text-white active:scale-[0.98] transition-all">
+          เข้าสู่ระบบ
+        </button>
+      </div>
+
+      <!-- Step 2: Select / Create Device -->
+      <div id="activate-step2" class="hidden">
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">เลือกอุปกรณ์ที่มีอยู่</label>
+            <select id="act-device-select" class="activate-select" onchange="onDeviceSelectChange()">
+              <option value="">-- สร้างอุปกรณ์ใหม่ --</option>
+            </select>
+          </div>
+          <div id="new-device-fields">
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">ชื่ออุปกรณ์ *</label>
+                <input type="text" id="act-device-name" class="activate-input" placeholder="เช่น โทรศัพท์ประจำตึก A">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">สถานที่ (ไม่บังคับ)</label>
+                <input type="text" id="act-device-location" class="activate-input" placeholder="เช่น ชั้น 1 ทางเข้าหลัก">
+              </div>
+            </div>
+          </div>
+        </div>
+        <p id="act-error2" class="text-red-400 text-sm mt-2 hidden"></p>
+        <div class="flex gap-2 mt-4">
+          <button onclick="activateBack()" class="flex-1 py-3 rounded-2xl font-bold bg-surface border border-border text-slate-300 active:scale-[0.98] transition-all">
+            ย้อนกลับ
+          </button>
+          <button onclick="activateStep2()" class="flex-1 py-3 rounded-2xl font-bold bg-green-600 text-white active:scale-[0.98] transition-all">
+            ✅ Activate
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3: Success -->
+      <div id="activate-step3" class="hidden text-center">
+        <div class="text-4xl mb-2">✅</div>
+        <p id="act-success-msg" class="text-green-400 font-semibold mb-2"></p>
+        <p class="text-slate-400 text-sm">อุปกรณ์พร้อมใช้งานแล้ว กล้องจะเปิดอัตโนมัติ</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <canvas id="capture-canvas" class="hidden"></canvas>
+
+  <script src="/js/camera.js?v=20260318-3"></script>
+  <script src="/js/api.js?v=20260318-4"></script>
+  <script>
+    const videoEl = document.getElementById('video');
+    const captureCanvas = document.getElementById('capture-canvas');
+    const camera = new CameraService(videoEl, captureCanvas);
+    const scanBtn = document.getElementById('scan-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnIcon = document.getElementById('btn-icon');
+    const faceGuide = document.getElementById('face-guide');
+    const deviceStatus = document.getElementById('device-status');
+    const resultOverlay = document.getElementById('result-overlay');
+    const camLoading = document.getElementById('cam-loading');
+    const camBlocker = document.getElementById('cam-blocker');
+
+    const DEVICE_TOKEN_KEY = 'attendance_device_token';
+    const DEVICE_NAME_KEY = 'attendance_device_name';
+
+    let currentDeviceToken = null;
+    let isScanning = false;
+    let activateCredentials = null; // เก็บ username/password ชั่วคราว
+
+    // ===== Clock =====
+    function updateClock() {
+      const now = new Date();
+      const time = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const date = now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      document.getElementById('clock-main').textContent = time;
+      document.getElementById('clock-top').textContent = time;
+      document.getElementById('date-main').textContent = date;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // ===== Toast =====
+    function showToast(msg, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'show' + (isError ? ' error' : '');
+      setTimeout(() => t.className = '', 3500);
+    }
+
+    // ===== Device Token Management =====
+    function getStoredToken() {
+      return localStorage.getItem(DEVICE_TOKEN_KEY);
+    }
+    function storeToken(token, deviceName) {
+      localStorage.setItem(DEVICE_TOKEN_KEY, token);
+      localStorage.setItem(DEVICE_NAME_KEY, deviceName);
+    }
+    function clearStoredToken() {
+      localStorage.removeItem(DEVICE_TOKEN_KEY);
+      localStorage.removeItem(DEVICE_NAME_KEY);
+    }
+
+    async function initDevice() {
+      const token = getStoredToken();
+      if (token) {
+        try {
+          const result = await API.validateDeviceToken(token);
+          if (result.valid) {
+            currentDeviceToken = token;
+            const name = result.device_name || localStorage.getItem(DEVICE_NAME_KEY) || 'อุปกรณ์';
+            setDeviceReady(name);
+            return;
+          }
+        } catch (e) {
+          console.warn('Token validation failed:', e);
+        }
+        // Token ไม่ valid แล้ว ลบออก
+        clearStoredToken();
+      }
+      // ไม่มี token หรือ token หมดอายุ → แสดง activate dialog
+      showActivateDialog();
+    }
+
+    function setDeviceReady(deviceName) {
+      deviceStatus.textContent = '📱 ' + deviceName;
+      deviceStatus.className = 'text-xs px-2 py-0.5 rounded-full bg-green-900/40 text-green-400 cursor-pointer';
+      deviceStatus.title = 'กดเพื่อเปลี่ยนอุปกรณ์';
+    }
+
+    function setDeviceNotReady() {
+      deviceStatus.textContent = '⚠️ ยังไม่ได้ activate';
+      deviceStatus.className = 'text-xs px-2 py-0.5 rounded-full bg-yellow-900/40 text-yellow-400 cursor-pointer';
+    }
+
+    // ===== Device Activation Dialog =====
+    function showActivateDialog() {
+      setDeviceNotReady();
+      // Reset all steps
+      document.getElementById('activate-step1').classList.remove('hidden');
+      document.getElementById('activate-step2').classList.add('hidden');
+      document.getElementById('activate-step3').classList.add('hidden');
+      document.getElementById('act-error').classList.add('hidden');
+      document.getElementById('act-error2').classList.add('hidden');
+      document.getElementById('act-username').value = '';
+      document.getElementById('act-password').value = '';
+      document.getElementById('activate-overlay').classList.add('show');
+      activateCredentials = null;
+    }
+
+    function hideActivateDialog() {
+      document.getElementById('activate-overlay').classList.remove('show');
+    }
+
+    async function activateStep1() {
+      const username = document.getElementById('act-username').value.trim();
+      const password = document.getElementById('act-password').value.trim();
+      const errEl = document.getElementById('act-error');
+
+      if (!username || !password) {
+        errEl.textContent = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      errEl.classList.add('hidden');
+
+      try {
+        // ดึงรายชื่ออุปกรณ์ (จะ validate credentials ไปด้วย)
+        const devices = await API.listDevicesForActivate(username, password);
+        activateCredentials = { username, password };
+
+        // เติมรายชื่ออุปกรณ์ใน select
+        const select = document.getElementById('act-device-select');
+        select.innerHTML = '<option value="">-- สร้างอุปกรณ์ใหม่ --</option>';
+        devices.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = d.device_name + (d.location ? ` (${d.location})` : '');
+          select.appendChild(opt);
+        });
+
+        // ไปขั้นตอน 2
+        document.getElementById('activate-step1').classList.add('hidden');
+        document.getElementById('activate-step2').classList.remove('hidden');
+        onDeviceSelectChange();
+      } catch (err) {
+        errEl.textContent = err.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+        errEl.classList.remove('hidden');
+      }
+    }
+
+    function activateBack() {
+      document.getElementById('activate-step2').classList.add('hidden');
+      document.getElementById('activate-step1').classList.remove('hidden');
+    }
+
+    function onDeviceSelectChange() {
+      const val = document.getElementById('act-device-select').value;
+      document.getElementById('new-device-fields').style.display = val ? 'none' : 'block';
+    }
+
+    async function activateStep2() {
+      const errEl = document.getElementById('act-error2');
+      errEl.classList.add('hidden');
+      const selectedId = document.getElementById('act-device-select').value;
+
+      let data = {
+        username: activateCredentials.username,
+        password: activateCredentials.password
+      };
+
+      if (selectedId) {
+        data.device_id = parseInt(selectedId);
+      } else {
+        const name = document.getElementById('act-device-name').value.trim();
+        if (!name) {
+          errEl.textContent = 'กรุณาใส่ชื่ออุปกรณ์';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        data.device_name = name;
+        data.location = document.getElementById('act-device-location').value.trim();
+      }
+
+      try {
+        const result = await API.activateDevice(data);
+        // บันทึก token ลง localStorage
+        storeToken(result.device_token, result.device_name);
+        currentDeviceToken = result.device_token;
+        setDeviceReady(result.device_name);
+
+        // แสดงขั้นตอน success
+        document.getElementById('activate-step2').classList.add('hidden');
+        document.getElementById('activate-step3').classList.remove('hidden');
+        document.getElementById('act-success-msg').textContent = result.message;
+
+        // ปิด dialog หลังจาก 1.5 วินาที แล้วเปิดกล้อง
+        setTimeout(() => {
+          hideActivateDialog();
+          if (!camera.isActive) {
+            camBlocker.classList.add('show');
+            camLoading.classList.add('hidden');
+          }
+        }, 1500);
+      } catch (err) {
+        errEl.textContent = err.message || 'ไม่สามารถ activate ได้';
+        errEl.classList.remove('hidden');
+      }
+    }
+
+    // Enter key support for activation form
+    document.getElementById('act-password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') activateStep1();
+    });
+    document.getElementById('act-username').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') activateStep1();
+    });
+
+    // ===== Camera =====
+    async function startCamera() {
+      const camErr = document.getElementById('cam-err');
+      const camBtnEl = document.getElementById('cam-btn');
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        camBlocker.classList.add('show');
+        camErr.textContent = 'เบราว์เซอร์นี้ไม่รองรับการเข้าถึงกล้อง';
+        camErr.classList.remove('hidden');
+        return;
+      }
+
+      // ตรวจสอบว่า activate แล้วหรือยัง
+      if (!currentDeviceToken) {
+        showActivateDialog();
+        return;
+      }
+
+      camBtnEl.textContent = 'กำลังเปิดกล้อง...';
+      camBtnEl.disabled = true;
+      camErr.classList.add('hidden');
+      camErr.textContent = '';
+      camLoading.classList.remove('hidden');
+
+      try {
+        await camera.start();
+        camLoading.classList.add('hidden');
+        camBlocker.classList.remove('show');
+        scanBtn.disabled = false;
+        btnText.textContent = 'สแกนใบหน้า';
+        btnIcon.textContent = '📷';
+        camBtnEl.textContent = 'เปิดกล้อง';
+        camBtnEl.disabled = false;
+      } catch (err) {
+        const message = err?.message || 'ไม่สามารถเปิดกล้องได้ กรุณาลองใหม่';
+        camLoading.classList.add('hidden');
+        camBlocker.classList.add('show');
+        camErr.textContent = message;
+        camErr.classList.remove('hidden');
+        camBtnEl.textContent = 'ลองใหม่';
+        camBtnEl.disabled = false;
+        btnText.textContent = message;
+        btnIcon.textContent = '❌';
+      }
+    }
+
+    // ===== Scan =====
+    scanBtn.addEventListener('click', async () => {
+      if (isScanning || !camera.isActive) return;
+
+      // ตรวจสอบ token ก่อนสแกน
+      if (!currentDeviceToken) {
+        showActivateDialog();
+        return;
+      }
+
+      isScanning = true;
+      scanBtn.disabled = true;
+      btnIcon.textContent = '⏳';
+      btnText.textContent = 'กำลังประมวลผล...';
+      faceGuide.classList.remove('detected');
+
+      try {
+        const image_b64 = camera.captureFrame(0.85);
+        faceGuide.classList.add('detected');
+        const result = await API.checkin(image_b64, currentDeviceToken);
+        showResult(result);
+        setTimeout(hideResult, 4500);
+      } catch (err) {
+        const msg = err.message || 'เกิดข้อผิดพลาด';
+        // ถ้า device ไม่ valid → แสดง activate dialog
+        if (msg.includes('ลงทะเบียน') || msg.includes('activate') || msg.includes('อุปกรณ์')) {
+          clearStoredToken();
+          currentDeviceToken = null;
+          showActivateDialog();
+          showToast('กรุณา activate อุปกรณ์ใหม่', true);
+        } else {
+          showToast(msg, true);
+          showErrorCard(msg);
+          setTimeout(hideResult, 3000);
+        }
+      } finally {
+        setTimeout(() => {
+          isScanning = false;
+          scanBtn.disabled = false;
+          btnIcon.textContent = '📷';
+          btnText.textContent = 'สแกนใบหน้า';
+          faceGuide.classList.remove('detected');
+        }, 2000);
+      }
+    });
+
+    // ===== Result Display =====
+    function showResult(result) {
+      const isCheckOut = result.action === 'check_out';
+      document.getElementById('res-icon').textContent = isCheckOut ? '👋' : '✅';
+      document.getElementById('res-name').textContent = result.employee_name;
+      document.getElementById('res-code').textContent = result.employee_code;
+      const t = new Date(result.timestamp);
+      document.getElementById('res-time').textContent =
+        (isCheckOut ? 'ออกงาน ' : 'เข้างาน ') +
+        t.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' น.';
+
+      const s = document.getElementById('res-status');
+      if (isCheckOut) {
+        s.textContent = 'ออกงานแล้ว';
+        s.className = 'px-4 py-1.5 rounded-full text-sm font-semibold bg-blue-900/50 text-blue-300';
+      } else if (result.status === 'late') {
+        s.textContent = 'เข้างานสาย';
+        s.className = 'px-4 py-1.5 rounded-full text-sm font-semibold bg-yellow-900/50 text-yellow-300';
+      } else {
+        s.textContent = 'ตรงเวลา';
+        s.className = 'px-4 py-1.5 rounded-full text-sm font-semibold bg-green-900/50 text-green-300';
+      }
+      resultOverlay.classList.add('show');
+    }
+
+    function showErrorCard(msg) {
+      document.getElementById('res-icon').textContent = '❌';
+      document.getElementById('res-name').textContent = 'ไม่สำเร็จ';
+      document.getElementById('res-code').textContent = '';
+      document.getElementById('res-time').textContent = msg;
+      document.getElementById('res-status').textContent = '';
+      document.getElementById('res-status').className = 'px-4 py-1.5 rounded-full text-sm font-semibold bg-red-900/50 text-red-300';
+      resultOverlay.classList.add('show');
+    }
+
+    function hideResult() {
+      resultOverlay.classList.remove('show');
+    }
+
+    // ===== Initialize =====
+    async function init() {
+      await initDevice();
+      if (currentDeviceToken) {
+        // อุปกรณ์ activate แล้ว → แสดงหน้ากล้อง
+        camBlocker.classList.add('show');
+        camLoading.classList.add('hidden');
+        scanBtn.disabled = true;
+        btnText.textContent = 'กรุณากดปุ่มเปิดกล้อง';
+        btnIcon.textContent = '🎥';
+      }
+    }
+    init();
+  </script>
+</body>
+</html>

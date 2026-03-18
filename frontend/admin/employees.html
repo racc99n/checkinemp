@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>จัดการพนักงาน - Admin</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">🏢 ระบบเข้างาน</div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="attendance.html" class="nav-item"><span class="nav-icon">📋</span> บันทึกการเข้างาน</a>
+      <a href="employees.html" class="nav-item active"><span class="nav-icon">👥</span> จัดการพนักงาน</a>
+      <a href="shifts.html" class="nav-item"><span class="nav-icon">🕐</span> จัดการกะงาน</a>
+      <a href="devices.html" class="nav-item"><span class="nav-icon">📱</span> จัดการอุปกรณ์</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="admin-name" style="color:#94a3b8;margin-bottom:0.5rem"></div>
+      <button onclick="logout()" class="nav-item" style="color:#f87171;padding:0.5rem 0">🚪 ออกจากระบบ</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">👥 จัดการพนักงาน</div>
+      <button class="btn btn-primary" onclick="openAddModal()">+ เพิ่มพนักงาน</button>
+    </div>
+    <div class="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">รายชื่อพนักงาน</span>
+          <div class="filter-bar">
+            <input type="text" id="search-emp" class="form-input" placeholder="ค้นหาชื่อหรือรหัส..." style="width:200px" oninput="filterTable()">
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>รหัส</th><th>ชื่อ-สกุล</th><th>แผนก</th><th>ตำแหน่ง</th><th>กะงาน</th><th>ข้อมูลใบหน้า</th><th>Telegram</th><th>จัดการ</th></tr>
+            </thead>
+            <tbody id="emp-tbody"><tr><td colspan="8" style="text-align:center;color:#64748b;padding:2rem">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Employee Modal -->
+<div class="modal-backdrop" id="emp-modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">เพิ่มพนักงาน</div>
+    <input type="hidden" id="emp-id">
+    <div class="form-group">
+      <label class="form-label">รหัสพนักงาน *</label>
+      <input type="text" id="emp-code" class="form-input" placeholder="EMP-001" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ชื่อ-นามสกุล *</label>
+      <input type="text" id="emp-name" class="form-input" placeholder="ชื่อ นามสกุล" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">แผนก</label>
+      <input type="text" id="emp-dept" class="form-input" placeholder="ฝ่ายขาย, IT, HR...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">ตำแหน่ง</label>
+      <input type="text" id="emp-pos" class="form-input" placeholder="ตำแหน่งงาน">
+    </div>
+    <div class="form-group">
+      <label class="form-label">กะงาน</label>
+      <select id="emp-shift" class="form-input">
+        <option value="">-- ไม่กำหนด (ใช้ค่าเริ่มต้น) --</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Telegram Chat ID <span style="color:#94a3b8;font-size:0.8rem">(สำหรับแจ้งเตือนส่วนตัว)</span></label>
+      <input type="text" id="emp-tg" class="form-input" placeholder="ตัวเลข เช่น 123456789">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('emp-modal')">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveEmployee()">💾 บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- Enroll Face Modal -->
+<div class="modal-backdrop" id="enroll-modal">
+  <div class="modal">
+    <div class="modal-title">📸 บันทึกข้อมูลใบหน้า</div>
+    <div id="enroll-emp-name" style="color:#64748b;margin-bottom:1rem;font-size:0.9rem"></div>
+    <input type="hidden" id="enroll-emp-id">
+
+    <div class="alert alert-info">ต้องการรูปภาพอย่างน้อย 3 รูป — ถ่ายในแสงที่ดี มองตรงกล้อง</div>
+
+    <div id="enroll-method" style="display:flex;gap:0.75rem;margin-bottom:1rem">
+      <button class="btn btn-outline btn-sm" onclick="switchEnrollMethod('camera')" id="btn-cam">📷 ใช้กล้อง</button>
+      <button class="btn btn-outline btn-sm" onclick="switchEnrollMethod('file')" id="btn-file">🗂️ อัปโหลดรูป</button>
+    </div>
+
+    <!-- Camera capture -->
+    <div id="enroll-camera-section" style="display:none">
+      <video id="enroll-video" autoplay playsinline muted style="width:100%;border-radius:0.5rem;margin-bottom:0.5rem"></video>
+      <canvas id="enroll-canvas" style="display:none"></canvas>
+      <button class="btn btn-primary" style="width:100%" onclick="captureEnrollPhoto()">📷 ถ่ายรูป (<span id="cap-count">0</span>/5)</button>
+    </div>
+
+    <!-- File upload -->
+    <div id="enroll-file-section">
+      <input type="file" id="enroll-files" accept="image/*" multiple class="form-input" style="margin-bottom:0.75rem">
+    </div>
+
+    <div class="photo-grid" id="enroll-preview"></div>
+    <div id="enroll-count-label" style="color:#64748b;font-size:0.85rem;margin-bottom:0.5rem"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeEnrollModal()">ยกเลิก</button>
+      <button class="btn btn-success" id="enroll-submit-btn" onclick="submitEnroll()" disabled>✅ บันทึกข้อมูลใบหน้า</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/camera.js"></script>
+<script>
+  if (!sessionStorage.getItem("admin_token")) window.location.href = "/admin/index.html";
+  document.getElementById("admin-name").textContent = "👤 " + (sessionStorage.getItem("admin_name") || "");
+  function logout() { sessionStorage.clear(); window.location.href = "/admin/index.html"; }
+
+  let enrollPhotos = [];
+  let enrollCamera = null;
+  let shifts = [];
+
+  function showAlert(msg, type = "success") {
+    document.getElementById("alert-area").innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+    setTimeout(() => document.getElementById("alert-area").innerHTML = "", 4000);
+  }
+
+  async function loadShifts() {
+    try {
+      shifts = await API.listShifts({ active_only: false });
+      const sel = document.getElementById("emp-shift");
+      sel.innerHTML = '<option value="">-- ไม่กำหนด (ใช้ค่าเริ่มต้น) --</option>' +
+        shifts.filter(s => s.is_active).map(s =>
+          `<option value="${s.id}">${s.name} (${s.start_time} - ${s.end_time})</option>`
+        ).join("");
+    } catch (err) {
+      console.error("Failed to load shifts:", err);
+    }
+  }
+
+  async function loadEmployees() {
+    try {
+      const emps = await API.listEmployees({ active_only: false });
+      window._employees = emps;
+      renderTable(emps);
+    } catch (err) {
+      showAlert(err.message, "error");
+    }
+  }
+
+  function filterTable() {
+    const q = document.getElementById("search-emp").value.toLowerCase();
+    const filtered = (window._employees || []).filter(e =>
+      e.full_name.toLowerCase().includes(q) || e.employee_code.toLowerCase().includes(q)
+    );
+    renderTable(filtered);
+  }
+
+  function renderTable(emps) {
+    const tbody = document.getElementById("emp-tbody");
+    if (!emps.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:2rem">ไม่พบข้อมูล</td></tr>';
+      return;
+    }
+    tbody.innerHTML = emps.map(e => `
+      <tr>
+        <td><code style="font-size:0.85rem">${e.employee_code}</code></td>
+        <td><strong>${e.full_name}</strong>${!e.is_active ? ' <span class="badge badge-red">ปิดใช้งาน</span>' : ''}</td>
+        <td>${e.department || '-'}</td>
+        <td>${e.position || '-'}</td>
+        <td>${e.shift_name
+          ? `<span class="badge badge-blue">${e.shift_name}</span>`
+          : '<span style="color:#94a3b8">ค่าเริ่มต้น</span>'
+        }</td>
+        <td>${e.face_encoding_path
+          ? '<span class="badge badge-green">✅ มีข้อมูล</span>'
+          : '<span class="badge badge-red">❌ ยังไม่มี</span>'
+        }</td>
+        <td>${e.telegram_chat_id ? '<span class="badge badge-blue">✅</span>' : '<span style="color:#94a3b8">-</span>'}</td>
+        <td>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="openEditModal(${e.id})">✏️</button>
+            <button class="btn btn-primary btn-sm" onclick="openEnrollModal(${e.id}, '${e.full_name}')">📸 ใบหน้า</button>
+            ${e.face_encoding_path ? `<button class="btn btn-outline btn-sm" onclick="removeFace(${e.id})">🗑️ ลบใบหน้า</button>` : ''}
+            ${e.is_active
+              ? `<button class="btn btn-danger btn-sm" onclick="deleteEmployee(${e.id}, '${e.full_name}')">🚫</button>`
+              : `<button class="btn btn-success btn-sm" onclick="reactivate(${e.id})">✅ เปิดใช้</button>`
+            }
+          </div>
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  function openAddModal() {
+    document.getElementById("modal-title").textContent = "เพิ่มพนักงาน";
+    document.getElementById("emp-id").value = "";
+    ["emp-code","emp-name","emp-dept","emp-pos","emp-tg"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("emp-shift").value = "";
+    document.getElementById("emp-code").disabled = false;
+    document.getElementById("emp-modal").classList.add("show");
+  }
+
+  function openEditModal(id) {
+    const emp = window._employees.find(e => e.id === id);
+    if (!emp) return;
+    document.getElementById("modal-title").textContent = "แก้ไขพนักงาน";
+    document.getElementById("emp-id").value = id;
+    document.getElementById("emp-code").value = emp.employee_code;
+    document.getElementById("emp-code").disabled = true;
+    document.getElementById("emp-name").value = emp.full_name;
+    document.getElementById("emp-dept").value = emp.department || "";
+    document.getElementById("emp-pos").value = emp.position || "";
+    document.getElementById("emp-shift").value = emp.shift_id || "";
+    document.getElementById("emp-tg").value = emp.telegram_chat_id || "";
+    document.getElementById("emp-modal").classList.add("show");
+  }
+
+  function closeModal(id) { document.getElementById(id).classList.remove("show"); }
+
+  async function saveEmployee() {
+    const id = document.getElementById("emp-id").value;
+    const shiftVal = document.getElementById("emp-shift").value;
+    const data = {
+      full_name: document.getElementById("emp-name").value,
+      department: document.getElementById("emp-dept").value,
+      position: document.getElementById("emp-pos").value,
+      shift_id: shiftVal ? parseInt(shiftVal) : null,
+      telegram_chat_id: document.getElementById("emp-tg").value || null,
+    };
+    try {
+      if (id) {
+        await API.updateEmployee(id, data);
+        showAlert("อัปเดตข้อมูลสำเร็จ");
+      } else {
+        await API.createEmployee({ ...data, employee_code: document.getElementById("emp-code").value });
+        showAlert("เพิ่มพนักงานสำเร็จ");
+      }
+      closeModal("emp-modal");
+      loadEmployees();
+    } catch (err) {
+      showAlert(err.message, "error");
+    }
+  }
+
+  async function deleteEmployee(id, name) {
+    if (!confirm(`ปิดใช้งานพนักงาน "${name}" ใช่หรือไม่?`)) return;
+    try {
+      await API.deleteEmployee(id);
+      showAlert(`ปิดใช้งาน "${name}" แล้ว`);
+      loadEmployees();
+    } catch (err) { showAlert(err.message, "error"); }
+  }
+
+  async function reactivate(id) {
+    try {
+      await API.updateEmployee(id, { is_active: true });
+      showAlert("เปิดใช้งานพนักงานแล้ว");
+      loadEmployees();
+    } catch (err) { showAlert(err.message, "error"); }
+  }
+
+  async function removeFace(id) {
+    if (!confirm("ลบข้อมูลใบหน้าของพนักงานนี้?")) return;
+    try {
+      await API.removeFace(id);
+      showAlert("ลบข้อมูลใบหน้าแล้ว");
+      loadEmployees();
+    } catch (err) { showAlert(err.message, "error"); }
+  }
+
+  // Enroll face
+  function openEnrollModal(empId, empName) {
+    document.getElementById("enroll-emp-id").value = empId;
+    document.getElementById("enroll-emp-name").textContent = "พนักงาน: " + empName;
+    enrollPhotos = [];
+    updateEnrollPreview();
+    document.getElementById("enroll-modal").classList.add("show");
+    switchEnrollMethod("file");
+  }
+
+  function closeEnrollModal() {
+    if (enrollCamera) { enrollCamera.stop(); enrollCamera = null; }
+    document.getElementById("enroll-modal").classList.remove("show");
+  }
+
+  function switchEnrollMethod(method) {
+    document.getElementById("enroll-camera-section").style.display = method === "camera" ? "block" : "none";
+    document.getElementById("enroll-file-section").style.display = method === "file" ? "block" : "none";
+    if (method === "camera" && !enrollCamera) {
+      const video = document.getElementById("enroll-video");
+      const canvas = document.getElementById("enroll-canvas");
+      enrollCamera = new CameraService(video, canvas);
+      enrollCamera.start().catch(err => showAlert(err.message, "error"));
+    } else if (method === "file" && enrollCamera) {
+      enrollCamera.stop(); enrollCamera = null;
+    }
+    document.getElementById("enroll-files").addEventListener("change", handleFileSelect);
+  }
+
+  function captureEnrollPhoto() {
+    if (!enrollCamera || enrollPhotos.length >= 5) return;
+    const img = enrollCamera.captureFrame(0.9);
+    enrollPhotos.push(img);
+    updateEnrollPreview();
+  }
+
+  function handleFileSelect(e) {
+    const files = Array.from(e.target.files).slice(0, 5);
+    enrollPhotos = [];
+    files.forEach(f => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        enrollPhotos.push(ev.target.result);
+        updateEnrollPreview();
+      };
+      reader.readAsDataURL(f);
+    });
+  }
+
+  function updateEnrollPreview() {
+    const preview = document.getElementById("enroll-preview");
+    preview.innerHTML = enrollPhotos.map((img, i) =>
+      `<img src="${img}" class="photo-thumb active" alt="photo ${i+1}">`
+    ).join("");
+    document.getElementById("enroll-count-label").textContent = `รูปภาพที่เลือก: ${enrollPhotos.length}/5 (ต้องการอย่างน้อย 3 รูป)`;
+    document.getElementById("enroll-submit-btn").disabled = enrollPhotos.length < 3;
+    document.getElementById("cap-count").textContent = enrollPhotos.length;
+  }
+
+  async function submitEnroll() {
+    const empId = document.getElementById("enroll-emp-id").value;
+    const btn = document.getElementById("enroll-submit-btn");
+    btn.disabled = true;
+    btn.textContent = "กำลังประมวลผล...";
+    try {
+      await API.enrollFace(empId, enrollPhotos);
+      showAlert("บันทึกข้อมูลใบหน้าสำเร็จ ✅");
+      closeEnrollModal();
+      loadEmployees();
+    } catch (err) {
+      showAlert(err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "✅ บันทึกข้อมูลใบหน้า";
+    }
+  }
+
+  loadShifts();
+  loadEmployees();
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Admin</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">🏢 ระบบเข้างาน</div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html" class="nav-item active"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="attendance.html" class="nav-item"><span class="nav-icon">📋</span> บันทึกการเข้างาน</a>
+      <a href="employees.html" class="nav-item"><span class="nav-icon">👥</span> จัดการพนักงาน</a>
+      <a href="shifts.html" class="nav-item"><span class="nav-icon">🕐</span> จัดการกะงาน</a>
+      <a href="devices.html" class="nav-item"><span class="nav-icon">📱</span> จัดการอุปกรณ์</a>
+      <a href="/" class="nav-item" target="_blank"><span class="nav-icon">📷</span> หน้าสแกนหน้า</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="admin-name" style="color:#94a3b8;margin-bottom:0.5rem"></div>
+      <button onclick="logout()" class="nav-item" style="color:#f87171;padding:0.5rem 0">🚪 ออกจากระบบ</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">📊 Dashboard ภาพรวมวันนี้</div>
+      <div class="topbar-user" id="today-date"></div>
+    </div>
+    <div class="content">
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="s-today">-</div><div class="stat-label">เข้างานวันนี้</div></div>
+        <div class="stat-card"><div class="stat-icon">🟢</div><div class="stat-value" id="s-present">-</div><div class="stat-label">ตรงเวลา</div></div>
+        <div class="stat-card"><div class="stat-icon">🟡</div><div class="stat-value" id="s-late">-</div><div class="stat-label">มาสาย</div></div>
+        <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value" id="s-month">-</div><div class="stat-label">รวมเดือนนี้</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">บันทึกการเข้างานล่าสุด</span>
+          <a href="attendance.html" class="btn btn-outline btn-sm">ดูทั้งหมด →</a>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>พนักงาน</th><th>แผนก</th><th>เข้างาน</th><th>ออกงาน</th><th>สถานะ</th><th>อุปกรณ์</th>
+              </tr>
+            </thead>
+            <tbody id="recent-table"><tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:2rem">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  if (!sessionStorage.getItem("admin_token")) window.location.href = "/admin/index.html";
+  document.getElementById("admin-name").textContent = "👤 " + (sessionStorage.getItem("admin_name") || "admin");
+  document.getElementById("today-date").textContent = new Date().toLocaleDateString("th-TH", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+  function logout() {
+    sessionStorage.clear();
+    window.location.href = "/admin/index.html";
+  }
+
+  const statusBadge = s => {
+    if (s === "present") return '<span class="badge badge-green">ตรงเวลา</span>';
+    if (s === "late") return '<span class="badge badge-yellow">สาย</span>';
+    return '<span class="badge badge-gray">' + s + '</span>';
+  };
+
+  async function loadDashboard() {
+    const today = new Date().toISOString().slice(0,10);
+    const month = today.slice(0,7);
+    try {
+      const [summary, records] = await Promise.all([
+        API.getAttendanceSummary(month),
+        API.listAttendance({ date_from: today, date_to: today, page_size: 20 })
+      ]);
+      document.getElementById("s-today").textContent = summary.today_count;
+      document.getElementById("s-present").textContent = summary.present;
+      document.getElementById("s-late").textContent = summary.late;
+      document.getElementById("s-month").textContent = summary.total_records;
+
+      const tbody = document.getElementById("recent-table");
+      if (!records.records.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:2rem">ยังไม่มีบันทึกวันนี้</td></tr>';
+        return;
+      }
+      tbody.innerHTML = records.records.map(r => `
+        <tr>
+          <td><strong>${r.employee_name}</strong><br><small style="color:#64748b">${r.employee_code}</small></td>
+          <td>${r.department || '-'}</td>
+          <td>${r.check_in_at ? new Date(r.check_in_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}) : '-'}</td>
+          <td>${r.check_out_at ? new Date(r.check_out_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}) : '<span style="color:#94a3b8">ยังไม่ออก</span>'}</td>
+          <td>${statusBadge(r.status)}</td>
+          <td>${r.device_name || '-'}</td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  loadDashboard();
+  setInterval(loadDashboard, 30000);
+</script>
+</body>
+</html>
