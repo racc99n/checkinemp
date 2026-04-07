@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     LATE_THRESHOLD_MINUTES: int = 15
     SHIFT_START_TIME: str = "09:00"
     SHIFT_END_TIME: str = "18:00"
+    MIN_CHECKOUT_SECONDS: int = 60  # ต้องเข้างานอย่างน้อยกี่วินาทีจึงจะออกงานได้
 
     class Config:
         env_file = ".env"

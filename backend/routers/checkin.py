@@ -80,6 +80,23 @@ def checkin(
     ).first()
 
     if open_record:
+        # ป้องกันสแกนซ้ำติดกัน: ต้องผ่านไปอย่างน้อย MIN_CHECKOUT_SECONDS วินาทีหลังเข้างาน
+        seconds_since_checkin = (now - open_record.check_in_at).total_seconds()
+        if seconds_since_checkin < settings.MIN_CHECKOUT_SECONDS:
+            logger.info(
+                f"Duplicate scan ignored for {employee.employee_code}: "
+                f"{seconds_since_checkin:.1f}s since check-in (min={settings.MIN_CHECKOUT_SECONDS}s)"
+            )
+            return CheckInResponse(
+                success=True,
+                action="check_in",
+                employee_name=employee.full_name,
+                employee_code=employee.employee_code,
+                timestamp=open_record.check_in_at,
+                status=open_record.status,
+                message="บันทึกการเข้างานสำเร็จ ✅ (สแกนซ้ำ — ยังถือเป็นการเข้างาน)"
+            )
+
         # Check-out
         open_record.check_out_at = now
         open_record.check_out_photo_path = req.image_b64[:200]

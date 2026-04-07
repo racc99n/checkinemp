@@ -146,7 +146,7 @@ def notify_unknown_face(device_name: str, timestamp: datetime, photo_b64: Option
         f"กรุณาตรวจสอบ"
     )
     if _admin_chat_id:
-        _fire(_send_message(_admin_chat_id, msg, photo_b64=photo_b64))
+        _fire(_send_message(_admin_chat_id, msg))
 
 
 def notify_blocked_device(fingerprint_hash: str, timestamp: datetime):
